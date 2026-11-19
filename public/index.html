@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stockout Risk Dashboard</title>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">Stockout Risk <span>Forecast</span></div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="dashboard" type="button">Dashboard</button>
+      <button class="nav-btn" data-view="search" type="button">Product search</button>
+    </nav>
+  </header>
+
+  <main class="page">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="view-dashboard" class="view">
+
+      <div class="cards">
+        <div class="card-stat risk-high-card">
+          <span class="label">High risk</span>
+          <strong id="cardHigh">–</strong>
+          <span class="sub" id="cardHighSub">Enter stock to see risk</span>
+        </div>
+        <div class="card-stat risk-medium-card">
+          <span class="label">Medium risk</span>
+          <strong id="cardMedium">–</strong>
+          <span class="sub" id="cardMediumSub">Enter stock to see risk</span>
+        </div>
+        <div class="card-stat">
+          <span class="label">Forecast, all products</span>
+          <strong id="cardForecast">–</strong>
+          <span class="sub" id="cardForecastSub">units next week</span>
+        </div>
+        <div class="card-stat">
+          <span class="label">Typical error</span>
+          <strong id="cardMae">–</strong>
+          <span class="sub" id="cardMaeSub">units per product</span>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="filters" role="group" aria-label="Filter products">
+          <button class="chip active" data-filter="all" type="button">All</button>
+          <button class="chip" data-filter="high" type="button">High</button>
+          <button class="chip" data-filter="medium" type="button">Medium</button>
+          <button class="chip" data-filter="low" type="button">Low</button>
+          <button class="chip" data-filter="nostock" type="button">No stock entered</button>
+        </div>
+        <input id="tableSearch" class="table-search" type="search" placeholder="Filter by product name or code">
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th class="num">Forecast next week</th>
+              <th class="num">Your stock</th>
+              <th class="num">Shortage</th>
+              <th>Risk</th>
+              <th class="num">Suggested order</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="6" class="empty">Loading products…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Shows the 50 products with the highest forecast, plus any product where you enter stock.
+        Stock numbers are saved in this browser only. Suggested order = forecast + typical error − stock.
+      </p>
+    </section>
+
+    <!-- ============ PRODUCT SEARCH ============ -->
+    <section id="view-search" class="view" hidden>
+
+      <div class="search-panel">
+        <div class="field">
+          <label for="product">Product name or code</label>
+          <div class="search-wrap">
+            <input id="product" type="text" placeholder="Type a name, e.g. wh" autocomplete="off">
+            <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+          </div>
+        </div>
+        <div class="field small">
+          <label for="currentStock">Current stock</label>
+          <input id="currentStock" type="number" min="0" step="1" value="100">
+        </div>
+        <button id="predictBtn" class="primary" type="button">Predict</button>
+      </div>
+
+      <section id="result" class="result">
+        <p class="message">Type a product name, pick it from the list, and the forecast will appear here.</p>
+      </section>
+    </section>
+
+  </main>
+
+  <script src="/js/index.js"></script>
+</body>
+</html>

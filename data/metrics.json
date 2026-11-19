@@ -1,0 +1,10 @@
+{
+  "mae_model": 28.23,
+  "mae_4week_average": 30.0,
+  "test_weeks": 8,
+  "data_from": "2010-11-29",
+  "data_to": "2011-12-05",
+  "products": 3803,
+  "products_named": 3775,
+  "trained_on": "2026-11-18"
+}

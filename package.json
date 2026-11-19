@@ -1,0 +1,19 @@
+{
+  "name": "sdc-stockout-risk-server",
+  "version": "1.0.0",
+  "description": "Node.js + Express server that predicts next week's demand and stockout risk.",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/forecast.test.js tests/products.test.js tests/stockProvider.test.js tests/gemini.test.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^18.0.10",
+    "express": "^4.21.2"
+  }
+}
