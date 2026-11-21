@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: stockout-risk-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python cloud_runner.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NGROK_AUTHTOKEN
+        value: 3MMIOfliTfuPebDbUfHNQeRYPdA_6eUfwRZSMaKpxZ4F51kxJ
+      - key: NGROK_DOMAIN
+        value: platter-unworried-securely.ngrok-free.dev

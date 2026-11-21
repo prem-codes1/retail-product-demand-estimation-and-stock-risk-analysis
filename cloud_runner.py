@@ -1,12 +1,14 @@
 """Cloud 24/7 Runner for Retail Stockout Risk API.
-Starts FastAPI server on port 8000 and tunnels through ngrok using your permanent static domain:
+Starts FastAPI server on 0.0.0.0:$PORT and tunnels through ngrok using your permanent static domain:
 https://platter-unworried-securely.ngrok-free.dev
+Includes automatic keep-alive self-pinging every 8 minutes.
 """
 
 import os
 import sys
 import time
 import threading
+import urllib.request
 import uvicorn
 from pyngrok import ngrok, conf
 
@@ -22,8 +24,39 @@ NGROK_DOMAIN = os.environ.get(
 )
 
 def run_api():
-    print(f"[Cloud Runner] Starting Uvicorn on 127.0.0.1:{PORT}...")
-    uvicorn.run("main:app", host="127.0.0.1", port=PORT, log_level="info")
+    print(f"[Cloud Runner] Starting Uvicorn on 0.0.0.0:{PORT}...")
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT, log_level="info")
+
+def start_self_pinger(public_url):
+    """Background daemon thread to ping health check every 8 minutes to prevent idle sleep."""
+    def ping_loop():
+        time.sleep(30)  # Wait for initial boot
+        while True:
+            try:
+                targets = [f"{public_url.rstrip('/')}/health"]
+                render_url = os.environ.get("RENDER_EXTERNAL_URL")
+                if render_url:
+                    targets.append(f"{render_url.rstrip('/')}/health")
+
+                for url in targets:
+                    req = urllib.request.Request(
+                        url,
+                        headers={
+                            "User-Agent": "Render-KeepAlive/1.0",
+                            "ngrok-skip-browser-warning": "69420",
+                            "Accept": "application/json",
+                        }
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        print(f"⏰ [Keep-Alive] Pinged {url} -> HTTP {resp.status}")
+            except Exception as e:
+                print(f"⚠️ [Keep-Alive] Ping note: {e}")
+
+            time.sleep(480)  # Ping every 8 minutes (Render sleeps at 15m)
+
+    thread = threading.Thread(target=ping_loop, daemon=True)
+    thread.start()
+    print("⏰ [Keep-Alive] Internal 8-minute self-pinger initialized.")
 
 def main():
     print("=" * 65)
@@ -66,7 +99,10 @@ def main():
     print(f"👉 Public ML Predict:    {public_url}/predict")
     print("=" * 65)
 
-    # 5. Keep alive
+    # 5. Start internal self-pinger
+    start_self_pinger(public_url)
+
+    # 6. Keep main process alive
     try:
         while True:
             time.sleep(1)

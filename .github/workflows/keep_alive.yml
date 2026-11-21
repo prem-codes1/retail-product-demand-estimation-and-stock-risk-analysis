@@ -1,0 +1,25 @@
+name: 24/7 Keep-Alive Pinger
+
+on:
+  schedule:
+    # Runs every 10 minutes, 24/7
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    # Allows manual test trigger from GitHub UI
+
+jobs:
+  ping:
+    name: Ping Cloud Server & ngrok Tunnel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping ngrok Health Endpoint
+        run: |
+          echo "Sending keep-alive ping to ngrok health endpoint..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "ngrok-skip-browser-warning: 69420" "https://platter-unworried-securely.ngrok-free.dev/health" || true)
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Keep-Alive successful! Server is awake and responding."
+          else
+            echo "ℹ️ Response status: $STATUS (Server waking up or reconnecting)"
+          fi
