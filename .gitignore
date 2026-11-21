@@ -1,2 +1,7 @@
 node_modules/
 .env
+ngrok.exe
+.ngrok.exe.old
+*.log
+__pycache__/
+dist/
