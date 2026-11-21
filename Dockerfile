@@ -14,8 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application and data files
 COPY main.py .
 COPY cloud_runner.py .
-COPY train_model.py .
-COPY demand_model.pkl .
 COPY data/ ./data/
 
 # Expose standard port
