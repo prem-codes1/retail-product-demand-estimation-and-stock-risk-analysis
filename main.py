@@ -164,6 +164,27 @@ def get_product_history(code: str) -> List[Dict[str, Any]]:
     if code_upper in history_by_code:
         return history_by_code[code_upper]
 
+    # Lazy-load from weekly_history.csv on demand when database is offline
+    history_path = DATA_DIR / "weekly_history.csv"
+    if history_path.exists():
+        try:
+            import csv
+            matched_rows = []
+            with open(history_path, mode="r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get("StockCode", "").strip().upper() == code_upper:
+                        matched_rows.append({
+                            "week": row["Week"],
+                            "demand": float(row.get("Demand", 0)),
+                            "unitPrice": float(row.get("UnitPrice", 0.0))
+                        })
+            if matched_rows:
+                history_by_code[code_upper] = matched_rows
+                return matched_rows
+        except Exception as e:
+            print(f"[FastAPI] CSV fallback read error: {e}")
+
     return []
 
 
