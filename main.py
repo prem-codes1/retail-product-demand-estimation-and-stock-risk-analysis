@@ -388,15 +388,19 @@ def predict(req: PredictRequest):
 def get_products(q: Optional[str] = Query(None, description="Search term")):
     if q and q.strip():
         term = q.strip().lower()
-        matches = []
+        exact_prefix = []
+        substring_match = []
         for p in products_list:
             code = str(p.get("code", "")).lower()
             name = str(p.get("name", "")).lower()
-            if term in code or term in name:
-                matches.append(p)
-                if len(matches) >= 10:
+            if code.startswith(term) or name.startswith(term):
+                exact_prefix.append(p)
+                if len(exact_prefix) >= 15:
                     break
-        return {"products": matches}
+            elif term in code or term in name:
+                substring_match.append(p)
+        combined = (exact_prefix + substring_match)[:15]
+        return {"products": combined}
     return {"products": products_list}
 
 

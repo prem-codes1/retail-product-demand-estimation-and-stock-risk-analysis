@@ -85,8 +85,8 @@
         <div class="field">
           <label for="product">Product name or code</label>
           <div class="search-wrap">
-            <input id="product" type="text" placeholder="Type a name, e.g. wh" autocomplete="off">
-            <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+            <input id="product" type="text" placeholder="Type a name, e.g. wh" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions">
+            <ul id="suggestions" class="suggestions" role="listbox" aria-label="Product suggestions" hidden></ul>
           </div>
         </div>
         <div class="field small">

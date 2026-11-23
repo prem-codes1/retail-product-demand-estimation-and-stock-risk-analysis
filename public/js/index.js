@@ -256,47 +256,112 @@ let activeIndex = -1;
 let currentMatches = [];
 let searchTimer = null;
 let searchId = 0;
+let searchAbortController = null;
 
 function hideSuggestions() {
   suggestionList.hidden = true;
   suggestionList.replaceChildren();
   activeIndex = -1;
+  currentMatches = [];
+  productInput.setAttribute('aria-expanded', 'false');
+  productInput.removeAttribute('aria-activedescendant');
 }
 
 function renderSuggestions(matches) {
-  currentMatches = matches;
+  currentMatches = Array.isArray(matches) ? matches : [];
   activeIndex = -1;
-  if (matches.length === 0) return hideSuggestions();
-  suggestionList.replaceChildren(...matches.map((m) => {
+  suggestionList.replaceChildren();
+
+  if (currentMatches.length === 0) {
+    const emptyLi = el('li', 'suggestion-empty', 'No matching products found');
+    emptyLi.setAttribute('role', 'status');
+    emptyLi.setAttribute('aria-live', 'polite');
+    suggestionList.appendChild(emptyLi);
+    suggestionList.hidden = false;
+    productInput.setAttribute('aria-expanded', 'true');
+    productInput.removeAttribute('aria-activedescendant');
+    return;
+  }
+
+  const items = currentMatches.map((m, index) => {
     const li = el('li', 'suggestion');
+    const optId = `suggestion-opt-${index}`;
+    li.id = optId;
     li.setAttribute('role', 'option');
-    li.append(el('span', null, m.name), el('span', 'code', m.code));
-    // mousedown runs before the input loses focus, so the choice is not lost
+    li.setAttribute('aria-selected', 'false');
+
+    const nameSpan = el('span', 'name', m.name || m.code);
+    const codeSpan = el('span', 'code', m.code);
+    li.append(nameSpan, codeSpan);
+
+    // mousedown prevents blur before click executes
     li.addEventListener('mousedown', (event) => {
       event.preventDefault();
-      selectProduct(m.code, m.name);
+      selectProduct(m.code, m.name || m.code);
     });
+
+    li.addEventListener('mouseenter', () => {
+      setActive(index, false);
+    });
+
     return li;
-  }));
+  });
+
+  suggestionList.append(...items);
   suggestionList.hidden = false;
+  productInput.setAttribute('aria-expanded', 'true');
+  productInput.removeAttribute('aria-activedescendant');
 }
 
-function setActive(index) {
+function setActive(index, scroll = true) {
   const items = suggestionList.querySelectorAll('.suggestion');
-  items.forEach((item) => item.classList.remove('active'));
+  items.forEach((item, i) => {
+    const isActive = i === index;
+    item.classList.toggle('active', isActive);
+    item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
   if (index >= 0 && index < items.length) {
-    items[index].classList.add('active');
     activeIndex = index;
+    const activeItem = items[index];
+    productInput.setAttribute('aria-activedescendant', activeItem.id);
+    if (scroll && typeof activeItem.scrollIntoView === 'function') {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
+  } else {
+    activeIndex = -1;
+    productInput.removeAttribute('aria-activedescendant');
   }
 }
 
 async function fetchSuggestions(text) {
+  if (searchAbortController) {
+    searchAbortController.abort();
+  }
+  searchAbortController = new AbortController();
+  const signal = searchAbortController.signal;
   const id = ++searchId;
+
   try {
-    const res = await fetch(`/products?q=${encodeURIComponent(text)}`);
+    const res = await fetch(`/products?q=${encodeURIComponent(text)}`, {
+      headers: {
+        'Accept': 'application/json',
+        'ngrok-skip-browser-warning': '69420'
+      },
+      signal
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (id === searchId) renderSuggestions(data.products);
+    if (id !== searchId) return;
+
+    const matches = Array.isArray(data)
+      ? data
+      : (data && Array.isArray(data.products) ? data.products : []);
+
+    renderSuggestions(matches);
   } catch (e) {
+    if (e.name === 'AbortError') return;
+    console.warn('[search] suggestions error:', e);
     hideSuggestions();
   }
 }
@@ -305,40 +370,69 @@ productInput.addEventListener('input', () => {
   selectedCode = null;
   const text = productInput.value.trim();
   clearTimeout(searchTimer);
-  if (!text) return hideSuggestions();
-  searchTimer = setTimeout(() => fetchSuggestions(text), 150);
+  if (!text) {
+    if (searchAbortController) searchAbortController.abort();
+    hideSuggestions();
+    return;
+  }
+  searchTimer = setTimeout(() => fetchSuggestions(text), 250);
+});
+
+productInput.addEventListener('focus', () => {
+  const text = productInput.value.trim();
+  if (text && suggestionList.hidden) {
+    fetchSuggestions(text);
+  }
 });
 
 productInput.addEventListener('keydown', (event) => {
   const open = !suggestionList.hidden && currentMatches.length > 0;
-  if (event.key === 'ArrowDown' && open) {
+  if (event.key === 'ArrowDown') {
+    if (!open) {
+      const text = productInput.value.trim();
+      if (text) fetchSuggestions(text);
+      return;
+    }
     event.preventDefault();
-    setActive(Math.min(activeIndex + 1, currentMatches.length - 1));
-  } else if (event.key === 'ArrowUp' && open) {
+    const next = activeIndex < currentMatches.length - 1 ? activeIndex + 1 : 0;
+    setActive(next);
+  } else if (event.key === 'ArrowUp') {
+    if (!open) return;
     event.preventDefault();
-    setActive(Math.max(activeIndex - 1, 0));
+    const prev = activeIndex > 0 ? activeIndex - 1 : currentMatches.length - 1;
+    setActive(prev);
   } else if (event.key === 'Enter') {
-    event.preventDefault();
-    if (open && activeIndex >= 0) {
+    if (open && activeIndex >= 0 && currentMatches[activeIndex]) {
+      event.preventDefault();
       const m = currentMatches[activeIndex];
-      selectProduct(m.code, m.name);
+      selectProduct(m.code, m.name || m.code);
     } else {
       hideSuggestions();
       predict();
     }
   } else if (event.key === 'Escape') {
-    hideSuggestions();
+    if (!suggestionList.hidden) {
+      event.preventDefault();
+      hideSuggestions();
+    }
   }
 });
 
-productInput.addEventListener('blur', () => setTimeout(hideSuggestions, 100));
+// Close suggestions when clicking outside input or suggestion list
+document.addEventListener('click', (event) => {
+  if (!productInput.contains(event.target) && !suggestionList.contains(event.target)) {
+    hideSuggestions();
+  }
+});
 
 function selectProduct(code, name) {
   selectedCode = code;
   productInput.value = name;
   hideSuggestions();
   // Auto-fetch live stock for this product
-  fetch(`/stock/${encodeURIComponent(code)}`)
+  fetch(`/stock/${encodeURIComponent(code)}`, {
+    headers: { 'ngrok-skip-browser-warning': '69420' }
+  })
     .then(res => res.ok ? res.json() : null)
     .then(data => {
       if (data && typeof data.stock === 'number') {
