@@ -384,9 +384,20 @@ def predict(req: PredictRequest):
     }
 
 
-@app.get("/products", summary="List All Products")
-def get_products():
-    return products_list
+@app.get("/products", summary="List All Products or Search Suggestions")
+def get_products(q: Optional[str] = Query(None, description="Search term")):
+    if q and q.strip():
+        term = q.strip().lower()
+        matches = []
+        for p in products_list:
+            code = str(p.get("code", "")).lower()
+            name = str(p.get("name", "")).lower()
+            if term in code or term in name:
+                matches.append(p)
+                if len(matches) >= 10:
+                    break
+        return {"products": matches}
+    return {"products": products_list}
 
 
 @app.get("/model", summary="Get Active Model Configuration")
