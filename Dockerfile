@@ -11,10 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application and data files
+# Copy application, static frontend, and data files
 COPY main.py .
 COPY cloud_runner.py .
 COPY data/ ./data/
+COPY public/ ./public/
 
 # Expose standard port
 EXPOSE 8000
