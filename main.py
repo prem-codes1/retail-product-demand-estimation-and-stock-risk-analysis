@@ -74,11 +74,26 @@ def load_local_data():
         with open(metrics_path, "r", encoding="utf-8") as f:
             metrics_data = json.load(f)
 
-    # 4. History (minimal lazy or CSV load if mongo down)
+    # 4. History (CSV load if mongo down)
     history_path = DATA_DIR / "weekly_history.csv"
     if history_path.exists() and not history_by_code:
-        # Load sample or load from CSV if needed
-        pass
+        try:
+            import csv
+            with open(history_path, mode="r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    c = row.get("StockCode", "").strip().upper()
+                    if c not in history_by_code:
+                        history_by_code[c] = []
+                    history_by_code[c].append({
+                        "week": row["Week"],
+                        "demand": float(row.get("Demand", 0)),
+                        "unitPrice": float(row.get("UnitPrice", 0.0))
+                    })
+            print(f"[FastAPI] Loaded history for {len(history_by_code)} products from CSV")
+        except Exception as e:
+            print(f"[FastAPI] CSV history load error: {e}")
+
 
 
 @app.on_event("startup")
@@ -122,13 +137,23 @@ def startup_db():
 
 # ---------------- Pydantic Schemas ----------------
 class PredictRequest(BaseModel):
-    product: str = Field(..., example="85123A", description="Product StockCode or name")
+    product: Optional[str] = Field("21212", example="21212", description="Product StockCode or name")
     current_stock: Optional[float] = Field(None, example=400, description="Units currently in warehouse (optional: defaults to live/simulated stock)")
+    lag_1: Optional[float] = None
+    lag_2: Optional[float] = None
+    lag_3: Optional[float] = None
+    lag_4: Optional[float] = None
+    rolling_mean_4: Optional[float] = None
+    rolling_std_4: Optional[float] = None
+    rolling_mean_8: Optional[float] = None
+    month: Optional[int] = None
+    week_of_year: Optional[int] = None
+    UnitPrice: Optional[float] = None
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "product": "85123A",
+                "product": "21212",
                 "current_stock": 400
             }
         }
@@ -284,25 +309,42 @@ def predict(req: PredictRequest):
             raise HTTPException(status_code=404, detail=f"Product '{query}' not found.")
         code = matches[0]
 
-    rows = get_product_history(code)
-    if not rows or len(rows) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Insufficient historical data for product '{code}' to generate forecast.",
-        )
-
-    # Calculate next week date
-    last_week = rows[-1]["week"]
-    if isinstance(last_week, str):
-        last_dt = datetime.fromisoformat(last_week.replace("Z", "+00:00"))
-    elif isinstance(last_week, (int, float)):
-        last_dt = datetime.fromtimestamp(last_week / 1000.0, tz=timezone.utc)
+    # Check if raw features are provided directly in payload (e.g. from Postman test payload)
+    if req.lag_1 is not None and req.rolling_mean_4 is not None:
+        features = {
+            "lag_1": float(req.lag_1),
+            "lag_2": float(req.lag_2 if req.lag_2 is not None else req.lag_1),
+            "lag_3": float(req.lag_3 if req.lag_3 is not None else req.lag_1),
+            "lag_4": float(req.lag_4 if req.lag_4 is not None else req.lag_1),
+            "rolling_mean_4": float(req.rolling_mean_4),
+            "rolling_std_4": float(req.rolling_std_4 if req.rolling_std_4 is not None else 0.0),
+            "rolling_mean_8": float(req.rolling_mean_8 if req.rolling_mean_8 is not None else req.rolling_mean_4),
+            "month": int(req.month if req.month is not None else 12),
+            "week_of_year": int(req.week_of_year if req.week_of_year is not None else 50),
+            "UnitPrice": float(req.UnitPrice if req.UnitPrice is not None else 2.5),
+        }
+        predicted_demand = round(predict_demand_for_features(features), 1)
+        next_dt = datetime.now(timezone.utc)
     else:
-        last_dt = last_week
+        rows = get_product_history(code)
+        if not rows or len(rows) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient historical data for product '{code}' to generate forecast.",
+            )
 
-    next_dt = datetime.fromtimestamp(last_dt.timestamp() + 7 * 86400, tz=timezone.utc)
-    features = calculate_features(rows, next_dt)
-    predicted_demand = round(predict_demand_for_features(features), 1)
+        # Calculate next week date
+        last_week = rows[-1]["week"]
+        if isinstance(last_week, str):
+            last_dt = datetime.fromisoformat(last_week.replace("Z", "+00:00"))
+        elif isinstance(last_week, (int, float)):
+            last_dt = datetime.fromtimestamp(last_week / 1000.0, tz=timezone.utc)
+        else:
+            last_dt = last_week
+
+        next_dt = datetime.fromtimestamp(last_dt.timestamp() + 7 * 86400, tz=timezone.utc)
+        features = calculate_features(rows, next_dt)
+        predicted_demand = round(predict_demand_for_features(features), 1)
 
     # Stock determination
     if req.current_stock is not None and req.current_stock >= 0:

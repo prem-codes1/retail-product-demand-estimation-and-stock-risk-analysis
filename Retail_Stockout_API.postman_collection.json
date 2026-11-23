@@ -1,0 +1,172 @@
+{
+  "info": {
+    "name": "Retail Stockout Risk & Demand Forecast API",
+    "description": "Postman Collection to test the Retail Stockout ML API via the public ngrok tunnel.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "ngrok-skip-browser-warning",
+            "value": "69420",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://platter-unworried-securely.ngrok-free.dev/health",
+          "protocol": "https",
+          "host": [
+            "platter-unworried-securely",
+            "ngrok-free",
+            "dev"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Checks whether the server and ML model are loaded and active."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Predict Stockout Risk (By Product Code)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "ngrok-skip-browser-warning",
+            "value": "69420",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"product\": \"21212\",\n  \"current_stock\": 868\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://platter-unworried-securely.ngrok-free.dev/predict",
+          "protocol": "https",
+          "host": [
+            "platter-unworried-securely",
+            "ngrok-free",
+            "dev"
+          ],
+          "path": [
+            "predict"
+          ]
+        },
+        "description": "Sends product code '21212' and stock level to predict demand and risk."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Predict Stockout Risk (With Raw Features)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "ngrok-skip-browser-warning",
+            "value": "69420",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"product\": \"21212\",\n  \"lag_1\": 100,\n  \"lag_2\": 90,\n  \"lag_3\": 110,\n  \"lag_4\": 95,\n  \"rolling_mean_4\": 98.75,\n  \"rolling_std_4\": 8.5,\n  \"rolling_mean_8\": 95,\n  \"month\": 12,\n  \"week_of_year\": 50,\n  \"UnitPrice\": 2.5\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://platter-unworried-securely.ngrok-free.dev/predict",
+          "protocol": "https",
+          "host": [
+            "platter-unworried-securely",
+            "ngrok-free",
+            "dev"
+          ],
+          "path": [
+            "predict"
+          ]
+        },
+        "description": "Predicts directly using feature values."
+      },
+      "response": []
+    },
+    {
+      "name": "4. List All Products",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "ngrok-skip-browser-warning",
+            "value": "69420",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://platter-unworried-securely.ngrok-free.dev/products",
+          "protocol": "https",
+          "host": [
+            "platter-unworried-securely",
+            "ngrok-free",
+            "dev"
+          ],
+          "path": [
+            "products"
+          ]
+        },
+        "description": "Retrieves the list of products available in the catalog."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Swagger Documentation (HTML Preview)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "ngrok-skip-browser-warning",
+            "value": "69420",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://platter-unworried-securely.ngrok-free.dev/docs",
+          "protocol": "https",
+          "host": [
+            "platter-unworried-securely",
+            "ngrok-free",
+            "dev"
+          ],
+          "path": [
+            "docs"
+          ]
+        },
+        "description": "Renders the interactive Swagger UI (switch to 'Preview' tab in Postman)."
+      },
+      "response": []
+    }
+  ]
+}
