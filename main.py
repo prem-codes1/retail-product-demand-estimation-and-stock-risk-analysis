@@ -10,8 +10,10 @@ Connects to MongoDB with fallback to local JSON/CSV data files.
 """
 
 import os
+import re
 import json
 import math
+import urllib.request
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -466,15 +468,130 @@ def get_stock_single(code: str):
     return {"code": code_upper, "stock": int(20 + code_hash * 250), "source": "live"}
 
 
+def call_gemini_api(product_name: str, code: str, forecast: dict, features: dict, history: list) -> Optional[dict]:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+
+    pred = float(forecast.get("predicted_demand", 0))
+    stock = float(forecast.get("current_stock", 0))
+    risk = forecast.get("risk", "MEDIUM")
+    next_week = forecast.get("next_week", "next week")
+
+    recent_history = [w.get("demand", 0) for w in history[-12:]] if history else []
+    history_str = ", ".join(str(int(d)) for d in recent_history) or "N/A"
+
+    prompt = f"""You are a supply chain analyst. Explain this demand forecast in plain English for a warehouse manager.
+
+PRODUCT: {product_name} ({code})
+FORECAST WEEK: {next_week}
+PREDICTED DEMAND: {pred:.1f} units
+CURRENT STOCK: {stock:.0f} units
+RISK LEVEL: {risk}
+
+KEY METRICS:
+- Recent 4-week average: {features.get('rolling_mean_4', pred):.1f} units
+- 8-week baseline average: {features.get('rolling_mean_8', pred):.1f} units
+- Demand volatility std dev: {features.get('rolling_std_4', 0):.1f}
+- Unit price: ${features.get('UnitPrice', 0):.2f}
+
+RECENT HISTORY: {history_str} units
+
+INSTRUCTIONS:
+- Write 3-4 sentences maximum
+- Focus on actionable insights: why this forecast, what to watch
+- Avoid technical ML jargon (no "features", "model", "trees")
+- Output raw JSON only without markdown formatting.
+
+OUTPUT FORMAT:
+{{
+  "summary": "One-sentence executive summary of the forecast",
+  "drivers": ["Specific driver 1", "Specific driver 2", "Specific driver 3"],
+  "risks": ["Risk factor 1", "Risk factor 2"],
+  "confidence": "HIGH|MEDIUM|LOW"
+}}"""
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    req_body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}]
+    }).encode("utf-8")
+
+    req = urllib.request.Request(url, data=req_body, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            m = re.search(r"\{[\s\S]*\}", text)
+            if m:
+                parsed = json.loads(m.group(0))
+                if "summary" in parsed:
+                    parsed["source"] = "gemini"
+                    parsed["model"] = model
+                    if not isinstance(parsed.get("drivers"), list):
+                        parsed["drivers"] = [str(parsed.get("drivers", ""))]
+                    if not isinstance(parsed.get("risks"), list):
+                        parsed["risks"] = [str(parsed.get("risks", ""))]
+                    return parsed
+    except Exception as e:
+        print(f"[FastAPI] Gemini request error: {e}")
+    return None
+
+
+def generate_analytical_explanation(code: str, name: str, forecast: dict, features: dict, history: list) -> dict:
+    pred = round(float(forecast.get("predicted_demand", 0)), 1)
+    stock = float(forecast.get("current_stock", 0))
+    risk = forecast.get("risk", "LOW" if stock >= pred * 1.5 else "HIGH" if stock < pred else "MEDIUM")
+    next_week = forecast.get("next_week", "next week")
+
+    r4 = float(features.get("rolling_mean_4", pred))
+    r8 = float(features.get("rolling_mean_8", pred))
+    trend = "rising" if r4 > r8 + 2 else "falling" if r4 < r8 - 2 else "stable"
+    std4 = float(features.get("rolling_std_4", 0))
+    volatility = "high" if std4 > 5 else "low"
+
+    summary = f"Expected demand for {name} is projected at {pred} units for week {next_week}, driven by {trend} recent sales velocity."
+    drivers = [
+        f"4-week recent sales average of {round(r4, 1)} units/week ({trend} trend relative to 8-week baseline of {round(r8, 1)} units)",
+        f"Short-term purchasing velocity exhibits {volatility} volatility (std dev ±{round(std4, 1)} units)",
+        f"Warehouse stock is currently at {int(stock)} units (stockout risk: {risk})"
+    ]
+    risks = [
+        "Unanticipated bulk order spikes exceeding historical baseline",
+        "Replenishment or supplier lead-time delays during active fulfillment"
+    ]
+    confidence = "HIGH" if abs(r4 - pred) < 10 else "MEDIUM"
+    return {
+        "summary": summary,
+        "drivers": drivers,
+        "risks": risks,
+        "confidence": confidence,
+        "source": "analytical_rules"
+    }
+
+
 @app.post("/explain", summary="Gemini Explainability Summary")
 def explain_forecast(payload: dict):
-    product = payload.get("product", {})
-    name = product.get("name") if isinstance(product, dict) else str(product)
+    product = payload.get("product", "")
+    code = str(product.get("code", "") if isinstance(product, dict) else product).upper().strip()
+    name = products_map.get(code, code)
+    if (not name or name == code) and isinstance(product, dict) and product.get("name"):
+        name = product["name"]
     forecast = payload.get("forecast", {})
-    pred = forecast.get("predicted_demand", 0) if isinstance(forecast, dict) else 0
-    return {
-        "explanation": f"Demand for {name or 'this item'} is projected at {pred} units based on historical sales velocity and seasonal demand trends."
-    }
+    features = payload.get("features", {})
+    history = payload.get("history", [])
+
+    explanation = None
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            explanation = call_gemini_api(name, code, forecast, features, history)
+        except Exception as e:
+            print(f"[FastAPI] Gemini explain error: {e}")
+
+    if not explanation:
+        explanation = generate_analytical_explanation(code, name, forecast, features, history)
+
+    return {"explanation": explanation}
 
 
 @app.get("/history/{code}", summary="Get History for Specific Product")

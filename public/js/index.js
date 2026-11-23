@@ -673,7 +673,11 @@ async function fetchExplanation(productCode, productName, forecastData, features
   try {
     const response = await fetch('/explain', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'ngrok-skip-browser-warning': '69420'
+      },
       body: JSON.stringify({
         product: productCode,
         forecast: forecastData,
@@ -697,37 +701,56 @@ function renderExplanation(explanation) {
 
   const container = el('div', 'ai-explanation');
 
+  // Normalize structure in case explanation is a plain string or partial object
+  const isString = typeof explanation === 'string';
+  const summaryText = isString
+    ? explanation
+    : (explanation.summary || 'Demand forecast summary generated from sales velocity.');
+
+  const rawDrivers = !isString && Array.isArray(explanation.drivers) ? explanation.drivers : [];
+  const driversList = rawDrivers.length > 0
+    ? rawDrivers
+    : ['Recent sales velocity & baseline volume trends', 'Purchase frequency across recent cycles', 'Current warehouse stock vs projected run-rate'];
+
+  const rawRisks = !isString && Array.isArray(explanation.risks) ? explanation.risks : [];
+  const risksList = rawRisks.length > 0
+    ? rawRisks
+    : ['Supplier replenishment lead-time variance', 'Demand volatility or bulk order spikes'];
+
+  const confidenceLevel = ((!isString && explanation.confidence) || 'MEDIUM').toUpperCase();
+  const sourceName = (!isString && explanation.source === 'gemini')
+    ? '✨ Gemini AI Forecast Breakdown'
+    : '📊 Forecast Analysis & Executive Breakdown';
+
   // Source indicator - subtle and professional
   const sourceBadge = el('div', 'ai-source');
-  sourceBadge.textContent = '📊 Forecast Analysis & Executive Breakdown';
+  sourceBadge.textContent = sourceName;
 
   // Summary
-  const summary = el('p', 'ai-summary', explanation.summary);
+  const summary = el('p', 'ai-summary', summaryText);
 
   // Drivers
   const driversSection = el('div', 'ai-section');
   const driversTitle = el('h4', null, 'Key Drivers');
-  const driversList = el('ul', 'ai-list');
-  explanation.drivers.forEach(d => {
-    const li = el('li', null, d);
-    driversList.append(li);
+  const driversListEl = el('ul', 'ai-list');
+  driversList.forEach(d => {
+    driversListEl.append(el('li', null, String(d)));
   });
-  driversSection.append(driversTitle, driversList);
+  driversSection.append(driversTitle, driversListEl);
 
   // Risks
   const risksSection = el('div', 'ai-section');
   const risksTitle = el('h4', null, 'Risks to Monitor');
-  const risksList = el('ul', 'ai-list');
-  explanation.risks.forEach(r => {
-    const li = el('li', null, r);
-    risksList.append(li);
+  const risksListEl = el('ul', 'ai-list');
+  risksList.forEach(r => {
+    risksListEl.append(el('li', null, String(r)));
   });
-  risksSection.append(risksTitle, risksList);
+  risksSection.append(risksTitle, risksListEl);
 
   // Confidence
   const confidenceColors = { HIGH: 'var(--low)', MEDIUM: 'var(--medium)', LOW: 'var(--high)' };
   const confidence = el('div', 'ai-confidence');
-  confidence.innerHTML = `Forecast Confidence: <strong style="color: ${confidenceColors[explanation.confidence] || 'var(--text)'}">${explanation.confidence}</strong>`;
+  confidence.innerHTML = `Forecast Confidence: <strong style="color: ${confidenceColors[confidenceLevel] || 'var(--text)'}">${confidenceLevel}</strong>`;
 
   container.append(sourceBadge, summary, driversSection, risksSection, confidence);
   return container;
@@ -754,11 +777,15 @@ async function toggleForecastDetails(button, productCode, productName, forecastD
 
   // Check if we already fetched/cached it
   if (explanationCache.has(productCode)) {
-    container.dataset.productCode = productCode;
-    container.replaceChildren(renderExplanation(explanationCache.get(productCode)));
-    container.hidden = false;
-    button.textContent = '📊 Hide Forecast Details';
-    return;
+    try {
+      container.dataset.productCode = productCode;
+      container.replaceChildren(renderExplanation(explanationCache.get(productCode)));
+      container.hidden = false;
+      button.textContent = '📊 Hide Forecast Details';
+      return;
+    } catch (e) {
+      console.warn('Cached explanation render error:', e);
+    }
   }
 
   // Fetch in background while showing retrieval state
@@ -768,14 +795,20 @@ async function toggleForecastDetails(button, productCode, productName, forecastD
   container.dataset.productCode = productCode;
   container.innerHTML = '<div class="ai-loading">Retrieving forecast breakdown…</div>';
 
-  const explanation = await fetchExplanation(productCode, productName, forecastData, features, historyData);
-
-  button.disabled = false;
-  if (explanation) {
-    explanationCache.set(productCode, explanation);
-    container.replaceChildren(renderExplanation(explanation));
-    button.textContent = '📊 Hide Forecast Details';
-  } else {
+  try {
+    const explanation = await fetchExplanation(productCode, productName, forecastData, features, historyData);
+    button.disabled = false;
+    if (explanation) {
+      explanationCache.set(productCode, explanation);
+      container.replaceChildren(renderExplanation(explanation));
+      button.textContent = '📊 Hide Forecast Details';
+    } else {
+      container.innerHTML = '<div class="ai-error">Could not load forecast details. Please try again.</div>';
+      button.textContent = '📊 View Forecast Details';
+    }
+  } catch (err) {
+    button.disabled = false;
+    console.error('Error toggling forecast details:', err);
     container.innerHTML = '<div class="ai-error">Could not load forecast details. Please try again.</div>';
     button.textContent = '📊 View Forecast Details';
   }
